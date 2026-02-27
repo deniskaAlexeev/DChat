@@ -49,21 +49,54 @@ export function NewChatDialog({ open, onClose }: NewChatDialogProps) {
   }, [open, user]);
 
   const fetchFriends = async () => {
-    const { data, error } = await supabase
+    console.log('NewChatDialog - Fetching friends for user:', user?.id);
+    
+    // Fetch friendships where user is either sender or receiver
+    const { data: friendshipsWhereUserIsSender, error: error1 } = await supabase
       .from('friendships')
-      .select(`
-        *,
-        friend:friend_id (id, username, full_name, avatar_url)
-      `)
+      .select('*')
       .eq('user_id', user?.id)
       .eq('status', 'accepted');
 
-    if (error) {
-      console.error('Error fetching friends:', error);
+    const { data: friendshipsWhereUserIsReceiver, error: error2 } = await supabase
+      .from('friendships')
+      .select('*')
+      .eq('friend_id', user?.id)
+      .eq('status', 'accepted');
+
+    if (error1 || error2) {
+      console.error('Error fetching friends:', error1 || error2);
       return;
     }
 
-    setFriends(data || []);
+    const allFriendships = [
+      ...(friendshipsWhereUserIsSender || []),
+      ...(friendshipsWhereUserIsReceiver || [])
+    ];
+
+    // Get friend IDs
+    const friendIds = allFriendships.map(f => 
+      f.user_id === user?.id ? f.friend_id : f.user_id
+    );
+
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('*')
+      .in('id', friendIds);
+
+    const profilesMap = new Map(profiles?.map(p => [p.id, p]) || []);
+    
+    const friendsWithProfiles = allFriendships.map(f => {
+      const friendId = f.user_id === user?.id ? f.friend_id : f.user_id;
+      return {
+        ...f,
+        friend: profilesMap.get(friendId),
+        friend_id: friendId
+      };
+    });
+
+    console.log('NewChatDialog - Friends fetched:', friendsWithProfiles.length);
+    setFriends(friendsWithProfiles);
   };
 
   const handleCreatePrivateChat = async (friendId: string) => {

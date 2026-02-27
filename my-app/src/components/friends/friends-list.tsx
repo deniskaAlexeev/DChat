@@ -78,19 +78,35 @@ export function FriendsList({ open, onClose }: FriendsListProps) {
 
   const fetchFriends = async () => {
     console.log('Fetching friends for user:', user?.id);
-    const { data: friendships, error } = await supabase
+    
+    // Fetch friendships where user is either sender or receiver
+    const { data: friendshipsWhereUserIsSender, error: error1 } = await supabase
       .from('friendships')
       .select('*')
       .eq('user_id', user?.id)
       .eq('status', 'accepted');
 
-    if (error) {
-      console.error('Error fetching friends:', error);
+    const { data: friendshipsWhereUserIsReceiver, error: error2 } = await supabase
+      .from('friendships')
+      .select('*')
+      .eq('friend_id', user?.id)
+      .eq('status', 'accepted');
+
+    if (error1 || error2) {
+      console.error('Error fetching friends:', error1 || error2);
       return;
     }
 
-    // Fetch profiles separately
-    const friendIds = friendships?.map(f => f.friend_id) || [];
+    const allFriendships = [
+      ...(friendshipsWhereUserIsSender || []),
+      ...(friendshipsWhereUserIsReceiver || [])
+    ];
+
+    // Get friend IDs (if I'm sender - friend_id, if I'm receiver - user_id)
+    const friendIds = allFriendships.map(f => 
+      f.user_id === user?.id ? f.friend_id : f.user_id
+    );
+
     const { data: profiles } = await supabase
       .from('profiles')
       .select('*')
@@ -98,10 +114,14 @@ export function FriendsList({ open, onClose }: FriendsListProps) {
 
     const profilesMap = new Map(profiles?.map(p => [p.id, p]) || []);
     
-    const friendsWithProfiles = friendships?.map(f => ({
-      ...f,
-      friend: profilesMap.get(f.friend_id)
-    })) || [];
+    const friendsWithProfiles = allFriendships.map(f => {
+      const friendId = f.user_id === user?.id ? f.friend_id : f.user_id;
+      return {
+        ...f,
+        friend: profilesMap.get(friendId),
+        friend_id: friendId
+      };
+    });
 
     console.log('Friends fetched:', friendsWithProfiles.length);
     setFriends(friendsWithProfiles);
