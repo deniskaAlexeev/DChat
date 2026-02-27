@@ -24,6 +24,7 @@ import {
   Clock,
   UserMinus,
   Users,
+  RefreshCw,
 } from 'lucide-react';
 
 interface FriendsListProps {
@@ -42,7 +43,9 @@ export function FriendsList({ open, onClose }: FriendsListProps) {
   const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
+    console.log('FriendsList effect triggered - open:', open, 'user:', user?.id, 'activeTab:', activeTab);
     if (open && user) {
+      console.log('Loading friends data...');
       fetchFriends();
       fetchPendingRequests();
       fetchSentRequests();
@@ -58,7 +61,7 @@ export function FriendsList({ open, onClose }: FriendsListProps) {
             table: 'friendships',
           },
           (payload) => {
-            console.log('Friendship change:', payload);
+            console.log('Friendship change detected:', payload);
             // Refresh all data when any friendship changes
             fetchFriends();
             fetchPendingRequests();
@@ -71,9 +74,10 @@ export function FriendsList({ open, onClose }: FriendsListProps) {
         subscription.unsubscribe();
       };
     }
-  }, [open, user]);
+  }, [open, user, activeTab]);
 
   const fetchFriends = async () => {
+    console.log('Fetching friends for user:', user?.id);
     const { data, error } = await supabase
       .from('friendships')
       .select(`
@@ -89,10 +93,12 @@ export function FriendsList({ open, onClose }: FriendsListProps) {
       return;
     }
 
+    console.log('Friends fetched:', data?.length || 0);
     setFriends(data || []);
   };
 
   const fetchPendingRequests = async () => {
+    console.log('Fetching pending requests for user:', user?.id);
     const { data, error } = await supabase
       .from('friendships')
       .select(`
@@ -107,10 +113,12 @@ export function FriendsList({ open, onClose }: FriendsListProps) {
       return;
     }
 
+    console.log('Pending requests fetched:', data?.length || 0, data);
     setPendingRequests(data || []);
   };
 
   const fetchSentRequests = async () => {
+    console.log('Fetching sent requests for user:', user?.id);
     const { data, error } = await supabase
       .from('friendships')
       .select(`
@@ -125,6 +133,7 @@ export function FriendsList({ open, onClose }: FriendsListProps) {
       return;
     }
 
+    console.log('Sent requests fetched:', data?.length || 0, data);
     setSentRequests(data || []);
   };
 
@@ -286,6 +295,22 @@ export function FriendsList({ open, onClose }: FriendsListProps) {
             Управляйте своими друзьями и запросами
           </DialogDescription>
         </DialogHeader>
+
+        <div className="flex justify-end mb-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => {
+              fetchFriends();
+              fetchPendingRequests();
+              fetchSentRequests();
+              toast.success('Данные обновлены');
+            }}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Обновить
+          </Button>
+        </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
           <TabsList className="grid w-full grid-cols-4">
