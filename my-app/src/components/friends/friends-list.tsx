@@ -46,6 +46,30 @@ export function FriendsList({ open, onClose }: FriendsListProps) {
       fetchFriends();
       fetchPendingRequests();
       fetchSentRequests();
+      
+      // Subscribe to friendship changes
+      const subscription = supabase
+        .channel('friendships-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'friendships',
+          },
+          (payload) => {
+            console.log('Friendship change:', payload);
+            // Refresh all data when any friendship changes
+            fetchFriends();
+            fetchPendingRequests();
+            fetchSentRequests();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        subscription.unsubscribe();
+      };
     }
   }, [open, user]);
 
@@ -143,6 +167,21 @@ export function FriendsList({ open, onClose }: FriendsListProps) {
   };
 
   const sendFriendRequest = async (friendId: string) => {
+    console.log('Sending friend request:', { from: user?.id, to: friendId });
+    
+    // Check if friendship already exists
+    const { data: existing } = await supabase
+      .from('friendships')
+      .select('*')
+      .eq('user_id', user?.id)
+      .eq('friend_id', friendId)
+      .maybeSingle();
+    
+    if (existing) {
+      toast.error('Заявка уже отправлена');
+      return;
+    }
+    
     const { error } = await supabase.from('friendships').insert({
       user_id: user?.id,
       friend_id: friendId,
@@ -152,7 +191,8 @@ export function FriendsList({ open, onClose }: FriendsListProps) {
     });
 
     if (error) {
-      toast.error('Ошибка отправки запроса');
+      console.error('Error sending friend request:', error);
+      toast.error('Ошибка отправки запроса: ' + error.message);
     } else {
       toast.success('Запрос на дружбу отправлен');
       searchUsers();
@@ -161,24 +201,32 @@ export function FriendsList({ open, onClose }: FriendsListProps) {
   };
 
   const acceptFriendRequest = async (requestId: string) => {
+    console.log('Accepting friend request:', requestId);
+    
     const { error } = await supabase
       .from('friendships')
       .update({ status: 'accepted', updated_at: new Date().toISOString() })
       .eq('id', requestId);
 
     if (error) {
-      toast.error('Ошибка принятия запроса');
+      console.error('Error accepting request:', error);
+      toast.error('Ошибка принятия запроса: ' + error.message);
     } else {
       // Create reciprocal friendship
       const request = pendingRequests.find((r) => r.id === requestId);
       if (request) {
-        await supabase.from('friendships').insert({
+        console.log('Creating reciprocal friendship for:', request.user_id);
+        const { error: reciprocalError } = await supabase.from('friendships').insert({
           user_id: user?.id,
           friend_id: request.user_id,
           status: 'accepted',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         });
+        
+        if (reciprocalError) {
+          console.error('Error creating reciprocal friendship:', reciprocalError);
+        }
       }
 
       toast.success('Запрос на дружбу принят');
