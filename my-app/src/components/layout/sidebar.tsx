@@ -59,10 +59,12 @@ export function Sidebar() {
   }, [user]);
 
   const fetchChats = async () => {
-    const { data, error } = await supabase
+    // First get chat memberships
+    const { data: memberships, error: membershipError } = await supabase
       .from('chat_members')
       .select(`
         chat_id,
+        joined_at,
         chats:chat_id (
           id,
           name,
@@ -70,8 +72,7 @@ export function Sidebar() {
           created_at,
           updated_at,
           chat_members (
-            user_id,
-            profiles:user_id (id, username, full_name, avatar_url)
+            user_id
           ),
           messages (
             id,
@@ -84,17 +85,36 @@ export function Sidebar() {
       .eq('user_id', user?.id)
       .order('joined_at', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching chats:', error);
+    if (membershipError) {
+      console.error('Error fetching chats:', membershipError);
       return;
     }
 
-    const formattedChats = data.map((item: any) => {
+    // Get all user IDs from chats
+    const allUserIds = new Set<string>();
+    memberships?.forEach((item: any) => {
+      item.chats?.chat_members?.forEach((m: any) => {
+        if (m.user_id) allUserIds.add(m.user_id);
+      });
+    });
+
+    // Fetch profiles for all users
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('*')
+      .in('id', Array.from(allUserIds));
+
+    const profilesMap = new Map(profiles?.map(p => [p.id, p]) || []);
+
+    const formattedChats = memberships?.map((item: any) => {
       const chat = item.chats;
       const lastMessage = chat.messages?.[0];
-      const otherMembers = chat.chat_members?.filter(
-        (m: any) => m.user_id !== user?.id
-      );
+      const otherMembers = chat.chat_members
+        ?.filter((m: any) => m.user_id !== user?.id)
+        ?.map((m: any) => ({
+          ...m,
+          profiles: profilesMap.get(m.user_id)
+        }));
 
       return {
         ...chat,
@@ -109,7 +129,7 @@ export function Sidebar() {
           ? null
           : otherMembers?.[0]?.profiles?.avatar_url,
       };
-    });
+    }) || [];
 
     setChats(formattedChats);
   };

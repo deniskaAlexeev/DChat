@@ -78,13 +78,9 @@ export function FriendsList({ open, onClose }: FriendsListProps) {
 
   const fetchFriends = async () => {
     console.log('Fetching friends for user:', user?.id);
-    const { data, error } = await supabase
+    const { data: friendships, error } = await supabase
       .from('friendships')
-      .select(`
-        *,
-        friend:friend_id (id, username, full_name, avatar_url),
-        user:user_id (id, username, full_name, avatar_url)
-      `)
+      .select('*')
       .eq('user_id', user?.id)
       .eq('status', 'accepted');
 
@@ -93,18 +89,29 @@ export function FriendsList({ open, onClose }: FriendsListProps) {
       return;
     }
 
-    console.log('Friends fetched:', data?.length || 0);
-    setFriends(data || []);
+    // Fetch profiles separately
+    const friendIds = friendships?.map(f => f.friend_id) || [];
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('*')
+      .in('id', friendIds);
+
+    const profilesMap = new Map(profiles?.map(p => [p.id, p]) || []);
+    
+    const friendsWithProfiles = friendships?.map(f => ({
+      ...f,
+      friend: profilesMap.get(f.friend_id)
+    })) || [];
+
+    console.log('Friends fetched:', friendsWithProfiles.length);
+    setFriends(friendsWithProfiles);
   };
 
   const fetchPendingRequests = async () => {
     console.log('Fetching pending requests for user:', user?.id);
-    const { data, error } = await supabase
+    const { data: requests, error } = await supabase
       .from('friendships')
-      .select(`
-        *,
-        user:user_id (id, username, full_name, avatar_url)
-      `)
+      .select('*')
       .eq('friend_id', user?.id)
       .eq('status', 'pending');
 
@@ -113,18 +120,29 @@ export function FriendsList({ open, onClose }: FriendsListProps) {
       return;
     }
 
-    console.log('Pending requests fetched:', data?.length || 0, data);
-    setPendingRequests(data || []);
+    // Fetch sender profiles separately
+    const userIds = requests?.map(r => r.user_id) || [];
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('*')
+      .in('id', userIds);
+
+    const profilesMap = new Map(profiles?.map(p => [p.id, p]) || []);
+    
+    const requestsWithProfiles = requests?.map(r => ({
+      ...r,
+      user: profilesMap.get(r.user_id)
+    })) || [];
+
+    console.log('Pending requests fetched:', requestsWithProfiles.length);
+    setPendingRequests(requestsWithProfiles);
   };
 
   const fetchSentRequests = async () => {
     console.log('Fetching sent requests for user:', user?.id);
-    const { data, error } = await supabase
+    const { data: requests, error } = await supabase
       .from('friendships')
-      .select(`
-        *,
-        friend:friend_id (id, username, full_name, avatar_url)
-      `)
+      .select('*')
       .eq('user_id', user?.id)
       .eq('status', 'pending');
 
@@ -133,8 +151,22 @@ export function FriendsList({ open, onClose }: FriendsListProps) {
       return;
     }
 
-    console.log('Sent requests fetched:', data?.length || 0, data);
-    setSentRequests(data || []);
+    // Fetch recipient profiles separately
+    const friendIds = requests?.map(r => r.friend_id) || [];
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('*')
+      .in('id', friendIds);
+
+    const profilesMap = new Map(profiles?.map(p => [p.id, p]) || []);
+    
+    const requestsWithProfiles = requests?.map(r => ({
+      ...r,
+      friend: profilesMap.get(r.friend_id)
+    })) || [];
+
+    console.log('Sent requests fetched:', requestsWithProfiles.length);
+    setSentRequests(requestsWithProfiles);
   };
 
   const searchUsers = async () => {
